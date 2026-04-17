@@ -22,9 +22,14 @@ export function useTasks(pollIntervalMs = 2000) {
   }, []);
 
   useEffect(() => {
-    refresh();
+    // Kick off the first fetch asynchronously so the effect body doesn't
+    // call setState synchronously (see react-hooks/set-state-in-effect).
+    const initial = setTimeout(refresh, 0);
     const interval = setInterval(refresh, pollIntervalMs);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
   }, [refresh, pollIntervalMs]);
 
   // Check if any task is still in-progress (needs polling)
