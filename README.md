@@ -1,5 +1,7 @@
 # Data Processing Web System
 
+[![CI](https://github.com/alphaNewrex/data-processing-web-system/actions/workflows/ci.yml/badge.svg)](https://github.com/alphaNewrex/data-processing-web-system/actions/workflows/ci.yml)
+
 A web-based system that accepts JSON dataset uploads, processes them asynchronously through a multi-stage pipeline, and displays results in a real-time UI.
 
 ## Quick Start
