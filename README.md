@@ -21,7 +21,7 @@ That's it — all 6 services (frontend, API, 2 workers, RabbitMQ, MongoDB) start
 **Two-service backend (FastAPI + Celery):**
 The API server handles HTTP requests asynchronously, while Celery workers execute the CPU-bound processing pipeline in separate processes. This separation ensures uploads remain fast even when workers are busy with long-running computations.
 
-> Note: We have used Motor for async MongoDB operations in the API, and PyMongo for synchronous operations in Celery tasks.
+> Note: We use PyMongo throughout — `AsyncMongoClient` for non-blocking operations in the FastAPI async endpoints, and `MongoClient` (sync) in Celery workers.
 
 **Three-stage pipeline (preprocess → compute → summarise):**
 Rather than a single monolithic task, processing is split into a Celery chain of 3 stages. Each stage updates the dataset status in MongoDB, giving the UI granular progress visibility. The stages are:
@@ -33,7 +33,7 @@ Rather than a single monolithic task, processing is split into a Celery chain of
 RabbitMQ provides proper message acknowledgment semantics. Combined with `acks_late=True` and `reject_on_worker_lost=True`, if a worker crashes mid-task, the message is automatically re-delivered to another worker. This satisfies the requirement for consistent task state even in case of failure.
 
 **MongoDB for persistence:**
-Dataset entities are stored as documents in MongoDB, which naturally maps to the nested result structure (category_summary, etc.). The API uses Motor (async driver) to avoid blocking the event loop; workers use PyMongo (sync driver) since Celery tasks are synchronous by nature.
+Dataset entities are stored as documents in MongoDB, which naturally maps to the nested result structure (category_summary, etc.). PyMongo `AsyncMongoClient` is used in FastAPI to avoid blocking the event loop, while `MongoClient` (sync) is used in Celery workers since tasks are synchronous by nature. One library, two clients.
 
 **Dataset entity as source of truth:**
 Instead of relying on Celery's `AsyncResult` for status, each dataset has a dedicated MongoDB document tracking its lifecycle (`QUEUED → PREPROCESSING → COMPUTING → SUMMARISING → COMPLETED/FAILED`). This decouples status tracking from the broker and survives restarts and failures.
@@ -71,10 +71,11 @@ API docs available at **http://localhost:8000/docs** (Swagger UI).
 │   │   ├── main.py              # FastAPI app, CORS, lifespan
 │   │   ├── routes.py            # REST endpoints
 │   │   ├── schemas.py           # Pydantic response models
-│   │   └── async_store.py       # Motor (async) MongoDB operations
+│   │   └── async_store.py       # PyMongo Async MongoDB operations
 │   ├── workers/
 │   │   ├── celery_app.py        # Celery config (acks_late, prefetch)
-│   │   └── tasks.py             # 3-stage pipeline tasks
+│   │   ├── tasks.py             # 3-stage pipeline tasks
+│   │   └── workflow.py          # Pipeline chain definition
 │   ├── common/
 │   │   ├── config.py            # Environment-based settings
 │   │   ├── models.py            # DatasetEntity + status enum
@@ -109,6 +110,6 @@ docker compose exec api bash -c "PYTHONPATH=. pytest tests/ -v"
 
 ## Tech Stack
 
-- **Backend:** Python 3.12, FastAPI, Celery, PyMongo/Motor
+- **Backend:** Python 3.12, FastAPI, Celery, PyMongo (sync + async)
 - **Frontend:** React, TypeScript, Vite, Tailwind CSS, Shadcn UI
 - **Infrastructure:** RabbitMQ, MongoDB, Docker Compose, Nginx

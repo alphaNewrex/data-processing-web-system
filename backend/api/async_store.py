@@ -1,24 +1,24 @@
 """
-Async MongoDB store for FastAPI (Motor).
+Async MongoDB store for FastAPI (PyMongo Async).
 """
 
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 from common.config import settings
 from common.models import DatasetEntity
 
-_client: AsyncIOMotorClient | None = None
+_client: AsyncMongoClient | None = None
 
 
-def get_motor_client() -> AsyncIOMotorClient:
+def get_async_client() -> AsyncMongoClient:
     global _client
     if _client is None:
-        _client = AsyncIOMotorClient(settings.MONGO_URL)
+        _client = AsyncMongoClient(settings.MONGO_URL)
     return _client
 
 
 def _get_collection():
-    client = get_motor_client()
+    client = get_async_client()
     return client[settings.MONGO_DB][settings.MONGO_COLLECTION]
 
 

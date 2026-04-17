@@ -4,15 +4,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import router
-from api.async_store import get_motor_client
+from api.async_store import get_async_client
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Motor client connects lazily, nothing to do
     yield
-    # Shutdown: close Motor client
-    client = get_motor_client()
+    # Shutdown: close async MongoDB client
+    client = get_async_client()
     client.close()
 
 
