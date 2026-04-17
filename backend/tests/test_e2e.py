@@ -189,30 +189,31 @@ class TestTaskPipeline:
 class TestAPIEndpoints:
     """Test FastAPI endpoints with mocked Celery and MongoDB."""
 
-    @patch("api.routes.on_pipeline_error")
-    @patch("api.routes.summarise")
-    @patch("api.routes.compute")
-    @patch("api.routes.preprocess")
+    @patch("api.routes.build_processing_workflow")
     @patch("api.routes.create_dataset")
     @patch("api.routes.get_dataset")
-    def test_upload_success(self, mock_get, mock_create, mock_preprocess, mock_compute, mock_summarise, mock_error, client, sample_dataset):
+    def test_upload_success(self, mock_get, mock_create, mock_workflow, client, sample_dataset):
         mock_get.return_value = None  # no duplicate
         mock_create.return_value = None
 
-        # Mock the chain
-        mock_chain_result = MagicMock()
-        mock_chain_result.id = "test-task-id"
-        mock_preprocess.s.return_value.chain = MagicMock(return_value=mock_chain_result)
+        # build_processing_workflow is sync and returns an AsyncResult-like object
+        mock_async_result = MagicMock()
+        mock_async_result.id = "test-task-id"
+        mock_workflow.return_value = mock_async_result
 
-        with patch("api.routes.chain") as mock_chain_fn:
-            mock_chain_fn.return_value.apply_async.return_value = mock_chain_result
-
-            response = client.post("/api/dataset", files=[_make_file(sample_dataset, "ds_001.json")])
+        response = client.post("/api/dataset", files=[_make_file(sample_dataset, "ds_001.json")])
 
         assert response.status_code == 200
         data = response.json()
         assert data["dataset_id"] == "test_ds_001"
         assert data["status"] == "QUEUED"
+
+        # Verify workflow was dispatched with the right arguments
+        mock_create.assert_awaited_once()
+        mock_workflow.assert_called_once()
+        args, _ = mock_workflow.call_args
+        assert args[0] == "test_ds_001"
+        assert args[1]["dataset_id"] == "test_ds_001"
 
     def test_upload_non_json_file(self, client):
         response = client.post(
@@ -337,3 +338,214 @@ class TestEdgeCases:
         result = preprocess("floats", data)
         assert result["invalid_count"] == 0
         assert len(result["valid_records"]) == 2
+
+
+# -------------------------------------------------------------------
+# Celery error-handler test
+# -------------------------------------------------------------------
+
+class TestPipelineErrorHandler:
+    """Cover the on_pipeline_error failure callback."""
+
+    @patch("workers.tasks.set_dataset_failed")
+    def test_on_pipeline_error_marks_failed(self, mock_set_failed):
+        from workers.tasks import on_pipeline_error
+
+        # Celery error callbacks are invoked with (request, exc, traceback)
+        # as positional arguments (self is bound by `bind=True`).
+        exc = RuntimeError("preprocess blew up")
+        on_pipeline_error(
+            request=MagicMock(id="task-123"),
+            exc=exc,
+            traceback="Traceback ...",
+            dataset_id="ds_fail",
+        )
+
+        mock_set_failed.assert_called_once_with("ds_fail", "preprocess blew up")
+
+    @patch("workers.tasks.set_dataset_failed")
+    def test_on_pipeline_error_stringifies_non_exception(self, mock_set_failed):
+        from workers.tasks import on_pipeline_error
+
+        on_pipeline_error(
+            request=MagicMock(),
+            exc="plain string error",
+            traceback="",
+            dataset_id="ds_fail_2",
+        )
+
+        mock_set_failed.assert_called_once_with("ds_fail_2", "plain string error")
+
+
+# -------------------------------------------------------------------
+# Mongo store integration tests (mongomock)
+# -------------------------------------------------------------------
+
+class TestMongoStoreIntegration:
+    """
+    Integration tests for the sync common.store module backed by mongomock.
+
+    These exercise real pymongo query semantics (filters, updates, sorts)
+    without needing a live MongoDB instance.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _patch_client(self, monkeypatch):
+        import mongomock
+        from common import store as store_mod
+
+        fake_client = mongomock.MongoClient()
+        # Reset module-level cached client and swap MongoClient factory
+        monkeypatch.setattr(store_mod, "_client", None)
+        monkeypatch.setattr(store_mod, "MongoClient", lambda *_a, **_k: fake_client)
+        yield fake_client
+        # cleanup
+        monkeypatch.setattr(store_mod, "_client", None)
+
+    def _make_entity(self, dataset_id="ds_x", filename="ds_x.json"):
+        return DatasetEntity(
+            dataset_id=dataset_id,
+            filename=filename,
+            celery_task_id="",
+            status=DatasetStatus.QUEUED,
+        )
+
+    def test_create_and_get_dataset(self):
+        from common.store import create_dataset, get_dataset
+
+        entity = self._make_entity("ds_a")
+        create_dataset(entity)
+
+        fetched = get_dataset("ds_a")
+        assert fetched is not None
+        assert fetched.dataset_id == "ds_a"
+        assert fetched.status == DatasetStatus.QUEUED
+
+    def test_get_dataset_missing_returns_none(self):
+        from common.store import get_dataset
+        assert get_dataset("does_not_exist") is None
+
+    def test_update_dataset_status(self):
+        from common.store import create_dataset, update_dataset_status, get_dataset
+
+        create_dataset(self._make_entity("ds_b"))
+        update_dataset_status("ds_b", DatasetStatus.COMPUTING)
+
+        fetched = get_dataset("ds_b")
+        assert fetched.status == DatasetStatus.COMPUTING
+
+    def test_set_dataset_result_marks_completed(self):
+        from common.store import create_dataset, set_dataset_result, get_dataset
+
+        create_dataset(self._make_entity("ds_c"))
+        result = {
+            "dataset_id": "ds_c",
+            "record_count": 10,
+            "category_summary": {"A": 5, "B": 5},
+            "average_value": 12.5,
+            "invalid_records": 0,
+        }
+        set_dataset_result("ds_c", result)
+
+        fetched = get_dataset("ds_c")
+        assert fetched.status == DatasetStatus.COMPLETED
+        assert fetched.result == result
+
+    def test_set_dataset_failed_marks_failed(self):
+        from common.store import create_dataset, set_dataset_failed, get_dataset
+
+        create_dataset(self._make_entity("ds_d"))
+        set_dataset_failed("ds_d", "worker crashed")
+
+        fetched = get_dataset("ds_d")
+        assert fetched.status == DatasetStatus.FAILED
+        assert fetched.error == "worker crashed"
+
+    def test_list_datasets_sorted_desc_by_created_at(self):
+        from common.store import create_dataset, list_datasets
+        from datetime import datetime, timezone, timedelta
+
+        base = datetime.now(timezone.utc)
+        e1 = self._make_entity("ds_old")
+        e1.created_at = base - timedelta(hours=2)
+        e2 = self._make_entity("ds_new")
+        e2.created_at = base
+
+        create_dataset(e1)
+        create_dataset(e2)
+
+        docs = list_datasets()
+        assert [d["dataset_id"] for d in docs] == ["ds_new", "ds_old"]
+        # _id must be projected out
+        assert all("_id" not in d for d in docs)
+
+    def test_update_on_missing_dataset_is_noop(self):
+        from common.store import update_dataset_status, get_dataset
+
+        # Should not raise even when no matching document exists
+        update_dataset_status("ghost", DatasetStatus.COMPLETED)
+        assert get_dataset("ghost") is None
+
+
+# -------------------------------------------------------------------
+# Model serialization tests
+# -------------------------------------------------------------------
+
+class TestDatasetEntity:
+    def test_round_trip_to_from_dict(self):
+        e = DatasetEntity(
+            dataset_id="ds1",
+            filename="ds1.json",
+            celery_task_id="tid",
+            status=DatasetStatus.COMPUTING,
+            result={"k": 1},
+            error=None,
+        )
+        d = e.to_dict()
+        e2 = DatasetEntity.from_dict(d)
+        assert e2.dataset_id == "ds1"
+        assert e2.status == DatasetStatus.COMPUTING
+        assert e2.result == {"k": 1}
+        assert e2.error is None
+        assert isinstance(e2.created_at, datetime)
+
+
+# -------------------------------------------------------------------
+# Delete endpoint tests
+# -------------------------------------------------------------------
+
+class TestDeleteEndpoints:
+    @patch("api.routes.delete_dataset")
+    @patch("api.routes.get_dataset")
+    def test_delete_completed_dataset(self, mock_get, mock_delete, client):
+        mock_get.return_value = {
+            "dataset_id": "ds_1", "filename": "ds_1.json",
+            "status": "COMPLETED", "result": None, "error": None,
+            "created_at": "2026-01-01T00:00:00", "updated_at": "2026-01-01T00:00:00",
+        }
+        mock_delete.return_value = True
+        response = client.delete("/api/dataset/ds_1")
+        assert response.status_code == 200
+
+    @patch("api.routes.get_dataset")
+    def test_delete_nonexistent_dataset(self, mock_get, client):
+        mock_get.return_value = None
+        response = client.delete("/api/dataset/ghost")
+        assert response.status_code == 404
+
+    @patch("api.routes.get_dataset")
+    def test_delete_in_progress_dataset_rejected(self, mock_get, client):
+        mock_get.return_value = {
+            "dataset_id": "ds_p", "filename": "ds_p.json",
+            "status": "COMPUTING", "result": None, "error": None,
+            "created_at": "2026-01-01T00:00:00", "updated_at": "2026-01-01T00:00:00",
+        }
+        response = client.delete("/api/dataset/ds_p")
+        assert response.status_code == 409
+
+    @patch("api.routes.delete_all_datasets")
+    def test_delete_all_datasets(self, mock_delete_all, client):
+        mock_delete_all.return_value = 3
+        response = client.delete("/api/datasets")
+        assert response.status_code == 200
+        assert "3" in response.json()["message"]

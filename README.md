@@ -24,19 +24,20 @@ The API server handles HTTP requests asynchronously, while Celery workers execut
 > Note: We use PyMongo throughout — `AsyncMongoClient` for non-blocking operations in the FastAPI async endpoints, and `MongoClient` (sync) in Celery workers.
 
 **Three-stage pipeline (preprocess → compute → summarise):**
-Rather than a single monolithic task, processing is split into a Celery chain of 3 stages. Each stage updates the dataset status in MongoDB, giving the UI granular progress visibility. The stages are:
+Rather than a single monolithic task, processing is split into a Celery chain of 3 stages (Only done to demonstrate the concurrency of the workers better). Each stage updates the dataset status in MongoDB, giving the UI granular progress visibility. The stages are:
 - **Preprocess** — validates records, separates valid from invalid
 - **Compute** — builds category summary, calculates average value (with simulated delay)
 - **Summarise** — assembles final output, persists result
 
 **RabbitMQ as broker:**
-RabbitMQ provides proper message acknowledgment semantics. Combined with `acks_late=True` and `reject_on_worker_lost=True`, if a worker crashes mid-task, the message is automatically re-delivered to another worker. This satisfies the requirement for consistent task state even in case of failure.
+RabbitMQ provides proper message acknowledgment semantics. Combined with `acks_late=True` and `reject_on_worker_lost=True`, if a worker crashes mid-task, the message is automatically re-delivered to another worker. This ensures no dataset gets "stuck" in an incomplete state due to worker failure.
 
 **MongoDB for persistence:**
 Dataset entities are stored as documents in MongoDB, which naturally maps to the nested result structure (category_summary, etc.). PyMongo `AsyncMongoClient` is used in FastAPI to avoid blocking the event loop, while `MongoClient` (sync) is used in Celery workers since tasks are synchronous by nature. One library, two clients.
 
 **Dataset entity as source of truth:**
 Instead of relying on Celery's `AsyncResult` for status, each dataset has a dedicated MongoDB document tracking its lifecycle (`QUEUED → PREPROCESSING → COMPUTING → SUMMARISING → COMPLETED/FAILED`). This decouples status tracking from the broker and survives restarts and failures.
+This model brings in consistency and a single source of truth for the REST consumers and can poll to check the status of the task being run.
 
 **Two worker containers with concurrency=2:**
 This gives 4 concurrent task slots, demonstrating that the system handles multiple datasets submitted in quick succession. Tasks exceeding capacity are queued in RabbitMQ and processed as workers become available.
