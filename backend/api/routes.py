@@ -5,6 +5,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from api.async_store import create_dataset, get_dataset, list_datasets, delete_dataset, delete_all_datasets
 from api.schemas import DatasetUploadResponse, DatasetStatusResponse
 from common.models import DatasetEntity, DatasetStatus
+from common.storage import ensure_bucket, put_json, delete_prefix, KEY_RAW
 from workers.workflow import build_processing_workflow
 
 router = APIRouter()
@@ -52,8 +53,14 @@ async def upload_dataset(file: UploadFile = File(...)):
     )
     await create_dataset(entity)
 
-    # Dispatch processing workflow
-    build_processing_workflow(dataset_id, data)
+    # Upload raw payload to object storage so workers can pull it by key
+    # rather than receiving the full body through RabbitMQ.
+    ensure_bucket()
+    put_json(dataset_id, KEY_RAW, data)
+
+    # Dispatch processing workflow — only the dataset_id travels in the
+    # Celery messages; each stage pulls/pushes its payload from storage.
+    build_processing_workflow(dataset_id)
 
     return DatasetUploadResponse(
         dataset_id=dataset_id,
@@ -89,11 +96,15 @@ async def delete_dataset_endpoint(dataset_id: str):
             detail=f"Cannot delete dataset '{dataset_id}' while it is still processing (status: {doc['status']})",
         )
     await delete_dataset(dataset_id)
+    # Remove any stage payloads from object storage as well.
+    delete_prefix(dataset_id)
     return {"message": f"Dataset '{dataset_id}' deleted"}
 
 
 @router.delete("/datasets")
 async def delete_all_datasets_endpoint():
     """Delete all datasets that are COMPLETED or FAILED."""
-    count = await delete_all_datasets()
-    return {"message": f"{count} dataset(s) deleted"}
+    ids = await delete_all_datasets()
+    for dataset_id in ids:
+        delete_prefix(dataset_id)
+    return {"message": f"{len(ids)} dataset(s) deleted"}

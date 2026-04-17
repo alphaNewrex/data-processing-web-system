@@ -39,10 +39,22 @@ async def delete_dataset(dataset_id: str) -> bool:
     return result.deleted_count > 0
 
 
-async def delete_all_datasets() -> int:
+async def delete_all_datasets() -> list[str]:
+    """
+    Delete all datasets whose status is COMPLETED or FAILED.
+    Returns the list of removed dataset_ids so callers can clean up any
+    side storage (e.g. object store prefixes).
+    """
     col = _get_collection()
-    result = await col.delete_many({"status": {"$in": ["COMPLETED", "FAILED"]}})
-    return result.deleted_count
+    cursor = col.find(
+        {"status": {"$in": ["COMPLETED", "FAILED"]}},
+        {"_id": 0, "dataset_id": 1},
+    )
+    docs = await cursor.to_list(length=None)
+    ids = [d["dataset_id"] for d in docs]
+    if ids:
+        await col.delete_many({"dataset_id": {"$in": ids}})
+    return ids
 
 
 async def list_datasets() -> list[dict]:

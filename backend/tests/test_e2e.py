@@ -2,11 +2,13 @@
 End-to-end tests for the Data Processing API.
 
 These tests hit the real FastAPI app with a test MongoDB and mock Celery.
+S3 storage is backed by an in-memory dict (same pattern as mongomock).
 Run with: PYTHONPATH=. pytest tests/ -v
 """
 
 import json
 import io
+import copy
 import pytest
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone
@@ -15,6 +17,61 @@ from fastapi.testclient import TestClient
 
 from api.main import app
 from common.models import DatasetEntity, DatasetStatus
+
+
+# -------------------------------------------------------------------
+# In-memory S3 mock (no boto3 needed locally)
+# -------------------------------------------------------------------
+
+class FakeStorage:
+    """
+    Drop-in replacement for common.storage that keeps everything in a dict.
+    Mirrors put_json / get_json / delete_prefix / ensure_bucket.
+    """
+
+    def __init__(self):
+        self._objects: dict[str, dict] = {}  # key -> decoded payload
+
+    def put_json(self, dataset_id: str, name: str, payload) -> str:
+        key = f"{dataset_id}/{name}"
+        self._objects[key] = copy.deepcopy(payload)
+        return key
+
+    def get_json(self, dataset_id: str, name: str):
+        key = f"{dataset_id}/{name}"
+        return copy.deepcopy(self._objects[key])
+
+    def delete_prefix(self, dataset_id: str) -> int:
+        prefix = f"{dataset_id}/"
+        keys = [k for k in self._objects if k.startswith(prefix)]
+        for k in keys:
+            del self._objects[k]
+        return len(keys)
+
+    @staticmethod
+    def ensure_bucket():
+        pass  # no-op
+
+
+@pytest.fixture
+def fake_storage(monkeypatch):
+    """Patch common.storage functions with an in-memory dict."""
+    store = FakeStorage()
+    import common.storage as storage_mod
+    monkeypatch.setattr(storage_mod, "put_json", store.put_json)
+    monkeypatch.setattr(storage_mod, "get_json", store.get_json)
+    monkeypatch.setattr(storage_mod, "delete_prefix", store.delete_prefix)
+    monkeypatch.setattr(storage_mod, "ensure_bucket", store.ensure_bucket)
+    # Also patch the names imported directly into routes
+    import api.routes as routes_mod
+    monkeypatch.setattr(routes_mod, "put_json", store.put_json)
+    monkeypatch.setattr(routes_mod, "delete_prefix", store.delete_prefix)
+    monkeypatch.setattr(routes_mod, "ensure_bucket", store.ensure_bucket)
+    # And into workers.tasks
+    import workers.tasks as tasks_mod
+    monkeypatch.setattr(tasks_mod, "put_json", store.put_json)
+    monkeypatch.setattr(tasks_mod, "get_json", store.get_json)
+    return store
 
 
 @pytest.fixture
@@ -110,70 +167,88 @@ class TestTaskPipeline:
     """Test the task functions directly (without Celery broker)."""
 
     @patch("workers.tasks.update_dataset_status")
-    def test_preprocess(self, mock_update, sample_dataset):
+    @patch("workers.tasks.time.sleep")
+    def test_preprocess(self, mock_sleep, mock_update, fake_storage, sample_dataset):
         from workers.tasks import preprocess
-        result = preprocess("test_ds_001", sample_dataset)
 
-        assert result["dataset_id"] == "test_ds_001"
-        assert result["record_count"] == 6
-        assert result["invalid_count"] == 2
-        assert len(result["valid_records"]) == 4
+        fake_storage.put_json("test_ds_001", "raw.json", sample_dataset)
+        result_id = preprocess("test_ds_001")
+
+        assert result_id == "test_ds_001"
+        out = fake_storage.get_json("test_ds_001", "preprocessed.json")
+        assert out["record_count"] == 6
+        assert out["invalid_count"] == 2
+        assert len(out["valid_records"]) == 4
         mock_update.assert_called_once_with("test_ds_001", DatasetStatus.PREPROCESSING)
 
     @patch("workers.tasks.update_dataset_status")
     @patch("workers.tasks.time.sleep")
-    def test_compute(self, mock_sleep, mock_update):
+    def test_compute(self, mock_sleep, mock_update, fake_storage):
         from workers.tasks import compute
-        prev = {
-            "dataset_id": "test_ds_001",
-            "record_count": 6,
-            "invalid_count": 2,
-            "valid_records": [
-                {"id": "r1", "timestamp": "2026-01-01T10:00:00Z", "value": 10, "category": "A"},
-                {"id": "r2", "timestamp": "2026-01-01T10:01:00Z", "value": 20, "category": "B"},
-                {"id": "r3", "timestamp": "2026-01-01T10:02:00Z", "value": 30, "category": "A"},
-                {"id": "r4", "timestamp": "2026-01-01T10:03:00Z", "value": 15, "category": "C"},
-            ],
-        }
-        result = compute(prev)
 
-        assert result["category_summary"] == {"A": 2, "B": 1, "C": 1}
-        assert result["average_value"] == 18.75
-        assert result["record_count"] == 6
-        assert result["invalid_count"] == 2
+        fake_storage.put_json(
+            "test_ds_001",
+            "preprocessed.json",
+            {
+                "dataset_id": "test_ds_001",
+                "record_count": 6,
+                "invalid_count": 2,
+                "valid_records": [
+                    {"id": "r1", "timestamp": "2026-01-01T10:00:00Z", "value": 10, "category": "A"},
+                    {"id": "r2", "timestamp": "2026-01-01T10:01:00Z", "value": 20, "category": "B"},
+                    {"id": "r3", "timestamp": "2026-01-01T10:02:00Z", "value": 30, "category": "A"},
+                    {"id": "r4", "timestamp": "2026-01-01T10:03:00Z", "value": 15, "category": "C"},
+                ],
+            },
+        )
+        assert compute("test_ds_001") == "test_ds_001"
+        out = fake_storage.get_json("test_ds_001", "computed.json")
+        assert out["category_summary"] == {"A": 2, "B": 1, "C": 1}
+        assert out["average_value"] == 18.75
+        assert out["record_count"] == 6
+        assert out["invalid_count"] == 2
         mock_sleep.assert_called_once_with(15)
         mock_update.assert_called_once_with("test_ds_001", DatasetStatus.COMPUTING)
 
     @patch("workers.tasks.set_dataset_result")
     @patch("workers.tasks.update_dataset_status")
-    def test_summarise(self, mock_update, mock_set_result):
+    @patch("workers.tasks.time.sleep")
+    def test_summarise(self, mock_sleep, mock_update, mock_set_result, fake_storage):
         from workers.tasks import summarise
-        prev = {
-            "dataset_id": "test_ds_001",
-            "record_count": 6,
-            "invalid_count": 2,
-            "category_summary": {"A": 2, "B": 1, "C": 1},
-            "average_value": 18.75,
-        }
-        result = summarise(prev)
+
+        fake_storage.put_json(
+            "test_ds_001",
+            "computed.json",
+            {
+                "dataset_id": "test_ds_001",
+                "record_count": 6,
+                "invalid_count": 2,
+                "category_summary": {"A": 2, "B": 1, "C": 1},
+                "average_value": 18.75,
+            },
+        )
+        result = summarise("test_ds_001")
 
         assert result["dataset_id"] == "test_ds_001"
         assert result["record_count"] == 6
         assert result["category_summary"] == {"A": 2, "B": 1, "C": 1}
         assert result["average_value"] == 18.75
         assert result["invalid_records"] == 2
+        # Persisted to storage AND Mongo
+        assert fake_storage.get_json("test_ds_001", "result.json") == result
         mock_set_result.assert_called_once()
 
     @patch("workers.tasks.update_dataset_status")
     @patch("workers.tasks.set_dataset_result")
     @patch("workers.tasks.time.sleep")
-    def test_full_pipeline(self, mock_sleep, mock_set_result, mock_update, sample_dataset):
-        """Run preprocess -> compute -> summarise as a chain."""
+    def test_full_pipeline(self, mock_sleep, mock_set_result, mock_update, fake_storage, sample_dataset):
+        """Run preprocess -> compute -> summarise as a chain through storage."""
         from workers.tasks import preprocess, compute, summarise
 
-        r1 = preprocess("test_ds_001", sample_dataset)
-        r2 = compute(r1)
-        r3 = summarise(r2)
+        fake_storage.put_json("test_ds_001", "raw.json", sample_dataset)
+        assert preprocess("test_ds_001") == "test_ds_001"
+        assert compute("test_ds_001") == "test_ds_001"
+        r3 = summarise("test_ds_001")
 
         assert r3["dataset_id"] == "test_ds_001"
         assert r3["record_count"] == 6
@@ -192,11 +267,10 @@ class TestAPIEndpoints:
     @patch("api.routes.build_processing_workflow")
     @patch("api.routes.create_dataset")
     @patch("api.routes.get_dataset")
-    def test_upload_success(self, mock_get, mock_create, mock_workflow, client, sample_dataset):
+    def test_upload_success(self, mock_get, mock_create, mock_workflow, client, sample_dataset, fake_storage):
         mock_get.return_value = None  # no duplicate
         mock_create.return_value = None
 
-        # build_processing_workflow is sync and returns an AsyncResult-like object
         mock_async_result = MagicMock()
         mock_async_result.id = "test-task-id"
         mock_workflow.return_value = mock_async_result
@@ -208,12 +282,14 @@ class TestAPIEndpoints:
         assert data["dataset_id"] == "test_ds_001"
         assert data["status"] == "QUEUED"
 
-        # Verify workflow was dispatched with the right arguments
+        # Verify workflow dispatched with just the dataset_id
         mock_create.assert_awaited_once()
-        mock_workflow.assert_called_once()
-        args, _ = mock_workflow.call_args
-        assert args[0] == "test_ds_001"
-        assert args[1]["dataset_id"] == "test_ds_001"
+        mock_workflow.assert_called_once_with("test_ds_001")
+
+        # Raw payload should now live in storage under {dataset_id}/raw.json
+        uploaded = fake_storage.get_json("test_ds_001", "raw.json")
+        assert uploaded["dataset_id"] == "test_ds_001"
+        assert len(uploaded["records"]) == 6
 
     def test_upload_non_json_file(self, client):
         response = client.post(
@@ -292,52 +368,75 @@ class TestEdgeCases:
     """Test edge cases in processing logic."""
 
     @patch("workers.tasks.update_dataset_status")
-    def test_empty_records(self, mock_update):
+    @patch("workers.tasks.time.sleep")
+    def test_empty_records(self, mock_sleep, mock_update, fake_storage):
         from workers.tasks import preprocess
-        data = {"dataset_id": "empty", "records": []}
-        result = preprocess("empty", data)
-        assert result["record_count"] == 0
-        assert result["invalid_count"] == 0
-        assert result["valid_records"] == []
+
+        fake_storage.put_json("empty", "raw.json", {"dataset_id": "empty", "records": []})
+        assert preprocess("empty") == "empty"
+        out = fake_storage.get_json("empty", "preprocessed.json")
+        assert out["record_count"] == 0
+        assert out["invalid_count"] == 0
+        assert out["valid_records"] == []
 
     @patch("workers.tasks.update_dataset_status")
     @patch("workers.tasks.time.sleep")
-    def test_compute_no_valid_records(self, mock_sleep, mock_update):
+    def test_compute_no_valid_records(self, mock_sleep, mock_update, fake_storage):
         from workers.tasks import compute
-        prev = {"dataset_id": "empty", "record_count": 0, "invalid_count": 0, "valid_records": []}
-        result = compute(prev)
-        assert result["average_value"] == 0.0
-        assert result["category_summary"] == {}
+
+        fake_storage.put_json(
+            "empty",
+            "preprocessed.json",
+            {"dataset_id": "empty", "record_count": 0, "invalid_count": 0, "valid_records": []},
+        )
+        assert compute("empty") == "empty"
+        out = fake_storage.get_json("empty", "computed.json")
+        assert out["average_value"] == 0.0
+        assert out["category_summary"] == {}
 
     @patch("workers.tasks.update_dataset_status")
-    def test_all_invalid_records(self, mock_update):
+    @patch("workers.tasks.time.sleep")
+    def test_all_invalid_records(self, mock_sleep, mock_update, fake_storage):
         from workers.tasks import preprocess
-        data = {
-            "dataset_id": "all_invalid",
-            "records": [
-                {"id": "r1"},  # missing timestamp, value, category
-                {"timestamp": "2026-01-01T10:00:00Z"},  # missing id, value, category
-                {},  # empty
-            ],
-        }
-        result = preprocess("all_invalid", data)
-        assert result["record_count"] == 3
-        assert result["invalid_count"] == 3
-        assert result["valid_records"] == []
+
+        fake_storage.put_json(
+            "all_invalid",
+            "raw.json",
+            {
+                "dataset_id": "all_invalid",
+                "records": [
+                    {"id": "r1"},
+                    {"timestamp": "2026-01-01T10:00:00Z"},
+                    {},
+                ],
+            },
+        )
+        assert preprocess("all_invalid") == "all_invalid"
+        out = fake_storage.get_json("all_invalid", "preprocessed.json")
+        assert out["record_count"] == 3
+        assert out["invalid_count"] == 3
+        assert out["valid_records"] == []
 
     @patch("workers.tasks.update_dataset_status")
-    def test_float_values(self, mock_update):
+    @patch("workers.tasks.time.sleep")
+    def test_float_values(self, mock_sleep, mock_update, fake_storage):
         from workers.tasks import preprocess
-        data = {
-            "dataset_id": "floats",
-            "records": [
-                {"id": "r1", "timestamp": "2026-01-01T10:00:00Z", "value": 10.5, "category": "A"},
-                {"id": "r2", "timestamp": "2026-01-01T10:01:00Z", "value": 20.3, "category": "A"},
-            ],
-        }
-        result = preprocess("floats", data)
-        assert result["invalid_count"] == 0
-        assert len(result["valid_records"]) == 2
+
+        fake_storage.put_json(
+            "floats",
+            "raw.json",
+            {
+                "dataset_id": "floats",
+                "records": [
+                    {"id": "r1", "timestamp": "2026-01-01T10:00:00Z", "value": 10.5, "category": "A"},
+                    {"id": "r2", "timestamp": "2026-01-01T10:01:00Z", "value": 20.3, "category": "A"},
+                ],
+            },
+        )
+        assert preprocess("floats") == "floats"
+        out = fake_storage.get_json("floats", "preprocessed.json")
+        assert out["invalid_count"] == 0
+        assert len(out["valid_records"]) == 2
 
 
 # -------------------------------------------------------------------
@@ -515,17 +614,20 @@ class TestDatasetEntity:
 # -------------------------------------------------------------------
 
 class TestDeleteEndpoints:
+    @patch("api.routes.delete_prefix")
     @patch("api.routes.delete_dataset")
     @patch("api.routes.get_dataset")
-    def test_delete_completed_dataset(self, mock_get, mock_delete, client):
+    def test_delete_completed_dataset(self, mock_get, mock_delete, mock_prefix, client):
         mock_get.return_value = {
             "dataset_id": "ds_1", "filename": "ds_1.json",
             "status": "COMPLETED", "result": None, "error": None,
             "created_at": "2026-01-01T00:00:00", "updated_at": "2026-01-01T00:00:00",
         }
         mock_delete.return_value = True
+        mock_prefix.return_value = 0
         response = client.delete("/api/dataset/ds_1")
         assert response.status_code == 200
+        mock_prefix.assert_called_once_with("ds_1")
 
     @patch("api.routes.get_dataset")
     def test_delete_nonexistent_dataset(self, mock_get, client):
@@ -545,7 +647,36 @@ class TestDeleteEndpoints:
 
     @patch("api.routes.delete_all_datasets")
     def test_delete_all_datasets(self, mock_delete_all, client):
-        mock_delete_all.return_value = 3
-        response = client.delete("/api/datasets")
+        mock_delete_all.return_value = ["ds_a", "ds_b", "ds_c"]
+        with patch("api.routes.delete_prefix") as mock_prefix:
+            response = client.delete("/api/datasets")
         assert response.status_code == 200
         assert "3" in response.json()["message"]
+        assert mock_prefix.call_count == 3
+
+
+# -------------------------------------------------------------------
+# Object storage tests (in-memory fake)
+# -------------------------------------------------------------------
+
+class TestObjectStorage:
+    """Directly exercise the FakeStorage / common.storage interface."""
+
+    def test_put_and_get_json_round_trip(self, fake_storage):
+        key = fake_storage.put_json("ds_x", "raw.json", {"hello": "world", "n": [1, 2, 3]})
+        assert key == "ds_x/raw.json"
+        assert fake_storage.get_json("ds_x", "raw.json") == {"hello": "world", "n": [1, 2, 3]}
+
+    def test_delete_prefix_removes_all_stage_files(self, fake_storage):
+        for name in ("raw.json", "preprocessed.json", "computed.json", "result.json"):
+            fake_storage.put_json("ds_y", name, {"k": name})
+        deleted = fake_storage.delete_prefix("ds_y")
+        assert deleted == 4
+        # Second call is a no-op on an empty prefix.
+        assert fake_storage.delete_prefix("ds_y") == 0
+
+    def test_delete_prefix_no_objects(self, fake_storage):
+        assert fake_storage.delete_prefix("nothing") == 0
+
+    def test_ensure_bucket_is_noop(self, fake_storage):
+        fake_storage.ensure_bucket()  # should not raise

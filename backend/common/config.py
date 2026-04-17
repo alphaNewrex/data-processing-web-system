@@ -7,5 +7,12 @@ class Settings:
     MONGO_DB: str = os.getenv("MONGO_DB", "data_processing")
     MONGO_COLLECTION: str = "datasets"
 
+    # Object storage (MinIO / S3)
+    S3_ENDPOINT: str = os.getenv("S3_ENDPOINT", "http://localhost:9000")
+    S3_BUCKET: str = os.getenv("S3_BUCKET", "datasets")
+    S3_ACCESS_KEY: str = os.getenv("S3_ACCESS_KEY", "minioadmin")
+    S3_SECRET_KEY: str = os.getenv("S3_SECRET_KEY", "minioadmin")
+    S3_REGION: str = os.getenv("S3_REGION", "us-east-1")
+
 
 settings = Settings()

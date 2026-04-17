@@ -3,6 +3,10 @@ Celery tasks for dataset processing pipeline.
 
 Chain: preprocess -> compute -> summarise
 
+Only the dataset_id flows through the Celery broker. Each stage reads
+its input payload from S3 (MinIO) and writes its output back, keeping
+RabbitMQ messages tiny and making every stage individually replayable.
+
 Each stage updates the Dataset entity in MongoDB with current status.
 Uses acks_late + reject_on_worker_lost for crash resilience — if a worker
 dies mid-task, the message is re-queued and picked up by another worker.
@@ -14,6 +18,14 @@ from datetime import datetime
 from workers.celery_app import celery_app
 from common.store import update_dataset_status, set_dataset_result, set_dataset_failed
 from common.models import DatasetStatus
+from common.storage import (
+    get_json,
+    put_json,
+    KEY_RAW,
+    KEY_PREPROCESSED,
+    KEY_COMPUTED,
+    KEY_RESULT,
+)
 
 
 def _validate_record(record: dict) -> bool:
@@ -45,16 +57,17 @@ def _validate_record(record: dict) -> bool:
 
 
 @celery_app.task(bind=True, name="tasks.preprocess")
-def preprocess(self, dataset_id: str, data: dict) -> dict:
+def preprocess(self, dataset_id: str) -> str:
     """
-    Validate records, separate valid from invalid.
-    Updates entity status to PREPROCESSING.
+    Read raw.json from storage, validate records, write preprocessed.json.
+    Updates entity status to PREPROCESSING. Returns dataset_id.
     """
     update_dataset_status(dataset_id, DatasetStatus.PREPROCESSING)
 
     # Simulate long-running preprocessing
     time.sleep(15)
 
+    data = get_json(dataset_id, KEY_RAW)
     records = data.get("records", [])
     record_count = len(records)
 
@@ -67,25 +80,30 @@ def preprocess(self, dataset_id: str, data: dict) -> dict:
         else:
             invalid_count += 1
 
-    return {
-        "dataset_id": dataset_id,
-        "record_count": record_count,
-        "valid_records": valid_records,
-        "invalid_count": invalid_count,
-    }
+    put_json(
+        dataset_id,
+        KEY_PREPROCESSED,
+        {
+            "dataset_id": dataset_id,
+            "record_count": record_count,
+            "valid_records": valid_records,
+            "invalid_count": invalid_count,
+        },
+    )
+    return dataset_id
 
 
 @celery_app.task(bind=True, name="tasks.compute")
-def compute(self, prev_result: dict) -> dict:
+def compute(self, dataset_id: str) -> str:
     """
-    Compute category_summary and average_value.
+    Read preprocessed.json, compute summary, write computed.json.
     Simulates long-running computation with 15s delay.
-    Updates entity status to COMPUTING.
+    Updates entity status to COMPUTING. Returns dataset_id.
     """
-    dataset_id = prev_result["dataset_id"]
     update_dataset_status(dataset_id, DatasetStatus.COMPUTING)
 
-    valid_records = prev_result["valid_records"]
+    prev = get_json(dataset_id, KEY_PREPROCESSED)
+    valid_records = prev["valid_records"]
 
     # Simulate long-running computation
     time.sleep(15)
@@ -103,35 +121,42 @@ def compute(self, prev_result: dict) -> dict:
     else:
         average_value = 0.0
 
-    return {
-        "dataset_id": dataset_id,
-        "record_count": prev_result["record_count"],
-        "invalid_count": prev_result["invalid_count"],
-        "category_summary": category_summary,
-        "average_value": average_value,
-    }
+    put_json(
+        dataset_id,
+        KEY_COMPUTED,
+        {
+            "dataset_id": dataset_id,
+            "record_count": prev["record_count"],
+            "invalid_count": prev["invalid_count"],
+            "category_summary": category_summary,
+            "average_value": average_value,
+        },
+    )
+    return dataset_id
 
 
 @celery_app.task(bind=True, name="tasks.summarise")
-def summarise(self, prev_result: dict) -> dict:
+def summarise(self, dataset_id: str) -> dict:
     """
-    Assemble final output and persist result to MongoDB.
+    Read computed.json, write result.json and persist summary to MongoDB.
     Updates entity status to SUMMARISING, then COMPLETED.
     """
-    dataset_id = prev_result["dataset_id"]
     update_dataset_status(dataset_id, DatasetStatus.SUMMARISING)
 
     # Simulate long-running summarisation
     time.sleep(15)
 
+    prev = get_json(dataset_id, KEY_COMPUTED)
+
     result = {
         "dataset_id": dataset_id,
-        "record_count": prev_result["record_count"],
-        "category_summary": prev_result["category_summary"],
-        "average_value": prev_result["average_value"],
-        "invalid_records": prev_result["invalid_count"],
+        "record_count": prev["record_count"],
+        "category_summary": prev["category_summary"],
+        "average_value": prev["average_value"],
+        "invalid_records": prev["invalid_count"],
     }
 
+    put_json(dataset_id, KEY_RESULT, result)
     set_dataset_result(dataset_id, result)
     return result
 
