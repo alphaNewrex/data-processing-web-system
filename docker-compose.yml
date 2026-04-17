@@ -6,7 +6,7 @@ services:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
     healthcheck:
-      test: ["CMD", "rabbitmqctl", "status"]
+      test: [ "CMD", "rabbitmqctl", "status" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -18,7 +18,7 @@ services:
     volumes:
       - mongo_data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,15 +27,15 @@ services:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Web console
+      - "9000:9000" # S3 API
+      - "9001:9001" # Web console
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -63,7 +63,8 @@ services:
 
   worker-1:
     build: ./backend
-    command: celery -A workers.celery_app worker --loglevel=info --hostname=worker-1@%h --concurrency=2
+    command: celery -A workers.celery_app worker --loglevel=info
+      --hostname=worker-1@%h --concurrency=2
     environment:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672//
       MONGO_URL: mongodb://mongodb:27017
@@ -82,7 +83,8 @@ services:
 
   worker-2:
     build: ./backend
-    command: celery -A workers.celery_app worker --loglevel=info --hostname=worker-2@%h --concurrency=2
+    command: celery -A workers.celery_app worker --loglevel=info
+      --hostname=worker-2@%h --concurrency=2
     environment:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672//
       MONGO_URL: mongodb://mongodb:27017
