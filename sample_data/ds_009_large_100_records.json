@@ -1,0 +1,613 @@
+{
+  "dataset_id": "ds_009",
+  "records": [
+    {
+      "id": "r1",
+      "timestamp": "2026-03-01T10:01:00Z",
+      "value": 3.14,
+      "category": "B"
+    },
+    {
+      "id": "r2",
+      "timestamp": "2026-03-01T10:02:00Z",
+      "value": 6.28,
+      "category": "C"
+    },
+    {
+      "id": "r3",
+      "timestamp": "2026-03-01T10:03:00Z",
+      "value": 9.42,
+      "category": "D"
+    },
+    {
+      "id": "r4",
+      "timestamp": "2026-03-01T10:04:00Z",
+      "value": 12.56,
+      "category": "E"
+    },
+    {
+      "id": "r5",
+      "timestamp": "2026-03-01T10:05:00Z",
+      "value": 15.700000000000001,
+      "category": "A"
+    },
+    {
+      "id": "r6",
+      "timestamp": "2026-03-01T10:06:00Z",
+      "value": 18.84,
+      "category": "B"
+    },
+    {
+      "id": "r7",
+      "timestamp": "2026-03-01T10:07:00Z",
+      "value": 21.98,
+      "category": "C"
+    },
+    {
+      "id": "r8",
+      "timestamp": "2026-03-01T10:08:00Z",
+      "value": 25.12,
+      "category": "D"
+    },
+    {
+      "id": "r9",
+      "timestamp": "2026-03-01T10:09:00Z",
+      "value": 28.26,
+      "category": "E"
+    },
+    {
+      "id": "r10",
+      "timestamp": "2026-03-01T10:10:00Z",
+      "value": 31.400000000000002,
+      "category": "A"
+    },
+    {
+      "id": "r11",
+      "timestamp": "2026-03-01T10:11:00Z",
+      "value": 34.54,
+      "category": "B"
+    },
+    {
+      "id": "r12",
+      "timestamp": "2026-03-01T10:12:00Z",
+      "value": 37.68,
+      "category": "C"
+    },
+    {
+      "id": "r13",
+      "timestamp": "2026-03-01T10:13:00Z",
+      "value": 40.82,
+      "category": "D"
+    },
+    {
+      "id": "r14",
+      "timestamp": "2026-03-01T10:14:00Z",
+      "value": 43.96,
+      "category": "E"
+    },
+    {
+      "id": "r15",
+      "timestamp": "2026-03-01T10:15:00Z",
+      "value": 47.1,
+      "category": "A"
+    },
+    {
+      "id": "r16",
+      "timestamp": "2026-03-01T10:16:00Z",
+      "value": 50.24,
+      "category": "B"
+    },
+    {
+      "id": "r17",
+      "timestamp": "2026-03-01T10:17:00Z",
+      "value": 53.38,
+      "category": "C"
+    },
+    {
+      "id": "r18",
+      "timestamp": "2026-03-01T10:18:00Z",
+      "value": 56.52,
+      "category": "D"
+    },
+    {
+      "id": "r19",
+      "timestamp": "2026-03-01T10:19:00Z",
+      "value": 59.660000000000004,
+      "category": "E"
+    },
+    {
+      "id": "r20",
+      "timestamp": "2026-03-01T10:20:00Z",
+      "value": 62.800000000000004,
+      "category": "A"
+    },
+    {
+      "id": "r21",
+      "timestamp": "2026-03-01T10:21:00Z",
+      "value": 65.94,
+      "category": "B"
+    },
+    {
+      "id": "r22",
+      "timestamp": "2026-03-01T10:22:00Z",
+      "value": 69.08,
+      "category": "C"
+    },
+    {
+      "id": "r23",
+      "timestamp": "2026-03-01T10:23:00Z",
+      "value": 72.22,
+      "category": "D"
+    },
+    {
+      "id": "r24",
+      "timestamp": "2026-03-01T10:24:00Z",
+      "value": 75.36,
+      "category": "E"
+    },
+    {
+      "id": "r25",
+      "timestamp": "2026-03-01T10:25:00Z",
+      "value": 78.5,
+      "category": "A"
+    },
+    {
+      "id": "r26",
+      "timestamp": "2026-03-01T10:26:00Z",
+      "value": 81.64,
+      "category": "B"
+    },
+    {
+      "id": "r27",
+      "timestamp": "2026-03-01T10:27:00Z",
+      "value": 84.78,
+      "category": "C"
+    },
+    {
+      "id": "r28",
+      "timestamp": "2026-03-01T10:28:00Z",
+      "value": 87.92,
+      "category": "D"
+    },
+    {
+      "id": "r29",
+      "timestamp": "2026-03-01T10:29:00Z",
+      "value": 91.06,
+      "category": "E"
+    },
+    {
+      "id": "r30",
+      "timestamp": "2026-03-01T10:30:00Z",
+      "value": 94.2,
+      "category": "A"
+    },
+    {
+      "id": "r31",
+      "timestamp": "2026-03-01T10:31:00Z",
+      "value": 97.34,
+      "category": "B"
+    },
+    {
+      "id": "r32",
+      "timestamp": "2026-03-01T10:32:00Z",
+      "value": 100.48,
+      "category": "C"
+    },
+    {
+      "id": "r33",
+      "timestamp": "2026-03-01T10:33:00Z",
+      "value": 103.62,
+      "category": "D"
+    },
+    {
+      "id": "r34",
+      "timestamp": "2026-03-01T10:34:00Z",
+      "value": 106.76,
+      "category": "E"
+    },
+    {
+      "id": "r35",
+      "timestamp": "2026-03-01T10:35:00Z",
+      "value": 109.9,
+      "category": "A"
+    },
+    {
+      "id": "r36",
+      "timestamp": "2026-03-01T10:36:00Z",
+      "value": 113.04,
+      "category": "B"
+    },
+    {
+      "id": "r37",
+      "timestamp": "2026-03-01T10:37:00Z",
+      "value": 116.18,
+      "category": "C"
+    },
+    {
+      "id": "r38",
+      "timestamp": "2026-03-01T10:38:00Z",
+      "value": 119.32000000000001,
+      "category": "D"
+    },
+    {
+      "id": "r39",
+      "timestamp": "2026-03-01T10:39:00Z",
+      "value": 122.46000000000001,
+      "category": "E"
+    },
+    {
+      "id": "r40",
+      "timestamp": "2026-03-01T10:40:00Z",
+      "value": 125.60000000000001,
+      "category": "A"
+    },
+    {
+      "id": "r41",
+      "timestamp": "2026-03-01T10:41:00Z",
+      "value": 128.74,
+      "category": "B"
+    },
+    {
+      "id": "r42",
+      "timestamp": "2026-03-01T10:42:00Z",
+      "value": 131.88,
+      "category": "C"
+    },
+    {
+      "id": "r43",
+      "timestamp": "2026-03-01T10:43:00Z",
+      "value": 135.02,
+      "category": "D"
+    },
+    {
+      "id": "r44",
+      "timestamp": "2026-03-01T10:44:00Z",
+      "value": 138.16,
+      "category": "E"
+    },
+    {
+      "id": "r45",
+      "timestamp": "2026-03-01T10:45:00Z",
+      "value": 141.3,
+      "category": "A"
+    },
+    {
+      "id": "r46",
+      "timestamp": "2026-03-01T10:46:00Z",
+      "value": 144.44,
+      "category": "B"
+    },
+    {
+      "id": "r47",
+      "timestamp": "2026-03-01T10:47:00Z",
+      "value": 147.58,
+      "category": "C"
+    },
+    {
+      "id": "r48",
+      "timestamp": "2026-03-01T10:48:00Z",
+      "value": 150.72,
+      "category": "D"
+    },
+    {
+      "id": "r49",
+      "timestamp": "2026-03-01T10:49:00Z",
+      "value": 153.86,
+      "category": "E"
+    },
+    {
+      "id": "r50",
+      "timestamp": "2026-03-01T10:50:00Z",
+      "value": 157.0,
+      "category": "A"
+    },
+    {
+      "id": "r51",
+      "timestamp": "2026-03-01T10:51:00Z",
+      "value": 160.14000000000001,
+      "category": "B"
+    },
+    {
+      "id": "r52",
+      "timestamp": "2026-03-01T10:52:00Z",
+      "value": 163.28,
+      "category": "C"
+    },
+    {
+      "id": "r53",
+      "timestamp": "2026-03-01T10:53:00Z",
+      "value": 166.42000000000002,
+      "category": "D"
+    },
+    {
+      "id": "r54",
+      "timestamp": "2026-03-01T10:54:00Z",
+      "value": 169.56,
+      "category": "E"
+    },
+    {
+      "id": "r55",
+      "timestamp": "2026-03-01T10:55:00Z",
+      "value": 172.70000000000002,
+      "category": "A"
+    },
+    {
+      "id": "r56",
+      "timestamp": "2026-03-01T10:56:00Z",
+      "value": 175.84,
+      "category": "B"
+    },
+    {
+      "id": "r57",
+      "timestamp": "2026-03-01T10:57:00Z",
+      "value": 178.98000000000002,
+      "category": "C"
+    },
+    {
+      "id": "r58",
+      "timestamp": "2026-03-01T10:58:00Z",
+      "value": 182.12,
+      "category": "D"
+    },
+    {
+      "id": "r59",
+      "timestamp": "2026-03-01T10:59:00Z",
+      "value": 185.26000000000002,
+      "category": "E"
+    },
+    {
+      "id": "r60",
+      "timestamp": "2026-03-01T11:00:00Z",
+      "value": 188.4,
+      "category": "A"
+    },
+    {
+      "id": "r61",
+      "timestamp": "2026-03-01T11:01:00Z",
+      "value": 191.54000000000002,
+      "category": "B"
+    },
+    {
+      "id": "r62",
+      "timestamp": "2026-03-01T11:02:00Z",
+      "value": 194.68,
+      "category": "C"
+    },
+    {
+      "id": "r63",
+      "timestamp": "2026-03-01T11:03:00Z",
+      "value": 197.82000000000002,
+      "category": "D"
+    },
+    {
+      "id": "r64",
+      "timestamp": "2026-03-01T11:04:00Z",
+      "value": 200.96,
+      "category": "E"
+    },
+    {
+      "id": "r65",
+      "timestamp": "2026-03-01T11:05:00Z",
+      "value": 204.1,
+      "category": "A"
+    },
+    {
+      "id": "r66",
+      "timestamp": "2026-03-01T11:06:00Z",
+      "value": 207.24,
+      "category": "B"
+    },
+    {
+      "id": "r67",
+      "timestamp": "2026-03-01T11:07:00Z",
+      "value": 210.38,
+      "category": "C"
+    },
+    {
+      "id": "r68",
+      "timestamp": "2026-03-01T11:08:00Z",
+      "value": 213.52,
+      "category": "D"
+    },
+    {
+      "id": "r69",
+      "timestamp": "2026-03-01T11:09:00Z",
+      "value": 216.66,
+      "category": "E"
+    },
+    {
+      "id": "r70",
+      "timestamp": "2026-03-01T11:10:00Z",
+      "value": 219.8,
+      "category": "A"
+    },
+    {
+      "id": "r71",
+      "timestamp": "2026-03-01T11:11:00Z",
+      "value": 222.94,
+      "category": "B"
+    },
+    {
+      "id": "r72",
+      "timestamp": "2026-03-01T11:12:00Z",
+      "value": 226.08,
+      "category": "C"
+    },
+    {
+      "id": "r73",
+      "timestamp": "2026-03-01T11:13:00Z",
+      "value": 229.22,
+      "category": "D"
+    },
+    {
+      "id": "r74",
+      "timestamp": "2026-03-01T11:14:00Z",
+      "value": 232.36,
+      "category": "E"
+    },
+    {
+      "id": "r75",
+      "timestamp": "2026-03-01T11:15:00Z",
+      "value": 235.5,
+      "category": "A"
+    },
+    {
+      "id": "r76",
+      "timestamp": "2026-03-01T11:16:00Z",
+      "value": 238.64000000000001,
+      "category": "B"
+    },
+    {
+      "id": "r77",
+      "timestamp": "2026-03-01T11:17:00Z",
+      "value": 241.78,
+      "category": "C"
+    },
+    {
+      "id": "r78",
+      "timestamp": "2026-03-01T11:18:00Z",
+      "value": 244.92000000000002,
+      "category": "D"
+    },
+    {
+      "id": "r79",
+      "timestamp": "2026-03-01T11:19:00Z",
+      "value": 248.06,
+      "category": "E"
+    },
+    {
+      "id": "r80",
+      "timestamp": "2026-03-01T11:20:00Z",
+      "value": 251.20000000000002,
+      "category": "A"
+    },
+    {
+      "id": "r81",
+      "timestamp": "2026-03-01T11:21:00Z",
+      "value": 254.34,
+      "category": "B"
+    },
+    {
+      "id": "r82",
+      "timestamp": "2026-03-01T11:22:00Z",
+      "value": 257.48,
+      "category": "C"
+    },
+    {
+      "id": "r83",
+      "timestamp": "2026-03-01T11:23:00Z",
+      "value": 260.62,
+      "category": "D"
+    },
+    {
+      "id": "r84",
+      "timestamp": "2026-03-01T11:24:00Z",
+      "value": 263.76,
+      "category": "E"
+    },
+    {
+      "id": "r85",
+      "timestamp": "2026-03-01T11:25:00Z",
+      "value": 266.90000000000003,
+      "category": "A"
+    },
+    {
+      "id": "r86",
+      "timestamp": "2026-03-01T11:26:00Z",
+      "value": 270.04,
+      "category": "B"
+    },
+    {
+      "id": "r87",
+      "timestamp": "2026-03-01T11:27:00Z",
+      "value": 273.18,
+      "category": "C"
+    },
+    {
+      "id": "r88",
+      "timestamp": "2026-03-01T11:28:00Z",
+      "value": 276.32,
+      "category": "D"
+    },
+    {
+      "id": "r89",
+      "timestamp": "2026-03-01T11:29:00Z",
+      "value": 279.46000000000004,
+      "category": "E"
+    },
+    {
+      "id": "r90",
+      "timestamp": "2026-03-01T11:30:00Z",
+      "value": 282.6,
+      "category": "A"
+    },
+    {
+      "id": "r91",
+      "timestamp": "2026-03-01T11:31:00Z",
+      "value": 285.74,
+      "category": "B"
+    },
+    {
+      "id": "r92",
+      "timestamp": "2026-03-01T11:32:00Z",
+      "value": 288.88,
+      "category": "C"
+    },
+    {
+      "id": "r93",
+      "timestamp": "2026-03-01T11:33:00Z",
+      "value": 292.02000000000004,
+      "category": "D"
+    },
+    {
+      "id": "r94",
+      "timestamp": "2026-03-01T11:34:00Z",
+      "value": 295.16,
+      "category": "E"
+    },
+    {
+      "id": "r95",
+      "timestamp": "2026-03-01T11:35:00Z",
+      "value": 298.3,
+      "category": "A"
+    },
+    {
+      "id": "r96",
+      "timestamp": "2026-03-01T11:36:00Z",
+      "value": 301.44,
+      "category": "B"
+    },
+    {
+      "id": "r97",
+      "timestamp": "2026-03-01T11:37:00Z",
+      "value": 304.58,
+      "category": "C"
+    },
+    {
+      "id": "r98",
+      "timestamp": "2026-03-01T11:38:00Z",
+      "value": 307.72,
+      "category": "D"
+    },
+    {
+      "id": "r99",
+      "timestamp": "2026-03-01T11:39:00Z",
+      "value": 310.86,
+      "category": "E"
+    },
+    {
+      "id": "r100",
+      "timestamp": "2026-03-01T11:40:00Z",
+      "value": 314.0,
+      "category": "A"
+    },
+    {
+      "id": "bad1"
+    },
+    {
+      "id": "bad2",
+      "timestamp": "nope"
+    },
+    {}
+  ]
+}

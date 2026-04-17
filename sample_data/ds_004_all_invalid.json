@@ -1,0 +1,11 @@
+{
+	"dataset_id": "ds_004",
+	"records": [
+		{ "id": "r1" },
+		{ "value": 10 },
+		{ "category": "A" },
+		{ "timestamp": "2026-01-01T10:00:00Z" },
+		{},
+		{ "id": "r6", "timestamp": "invalid", "value": "bad", "category": "" }
+	]
+}

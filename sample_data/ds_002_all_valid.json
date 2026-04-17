@@ -1,0 +1,65 @@
+{
+	"dataset_id": "ds_002",
+	"records": [
+		{
+			"id": "r1",
+			"timestamp": "2026-02-01T08:00:00Z",
+			"value": 100,
+			"category": "X"
+		},
+		{
+			"id": "r2",
+			"timestamp": "2026-02-01T08:01:00Z",
+			"value": 200,
+			"category": "X"
+		},
+		{
+			"id": "r3",
+			"timestamp": "2026-02-01T08:02:00Z",
+			"value": 300,
+			"category": "X"
+		},
+		{
+			"id": "r4",
+			"timestamp": "2026-02-01T08:03:00Z",
+			"value": 400,
+			"category": "Y"
+		},
+		{
+			"id": "r5",
+			"timestamp": "2026-02-01T08:04:00Z",
+			"value": 500,
+			"category": "Y"
+		},
+		{
+			"id": "r6",
+			"timestamp": "2026-02-01T08:05:00Z",
+			"value": 600,
+			"category": "Z"
+		},
+		{
+			"id": "r7",
+			"timestamp": "2026-02-01T08:06:00Z",
+			"value": 700,
+			"category": "Z"
+		},
+		{
+			"id": "r8",
+			"timestamp": "2026-02-01T08:07:00Z",
+			"value": 800,
+			"category": "Z"
+		},
+		{
+			"id": "r9",
+			"timestamp": "2026-02-01T08:08:00Z",
+			"value": 900,
+			"category": "Z"
+		},
+		{
+			"id": "r10",
+			"timestamp": "2026-02-01T08:09:00Z",
+			"value": 1000,
+			"category": "W"
+		}
+	]
+}

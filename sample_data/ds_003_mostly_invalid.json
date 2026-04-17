@@ -1,0 +1,35 @@
+{
+	"dataset_id": "ds_003",
+	"records": [
+		{ "id": "r1", "value": 10, "category": "A" },
+		{ "id": "r2", "timestamp": "not-a-date", "value": 20, "category": "B" },
+		{ "id": "r3", "timestamp": "2026-01-01T10:00:00Z", "category": "C" },
+		{
+			"id": "r4",
+			"timestamp": "2026-01-01T10:00:00Z",
+			"value": "not-a-number",
+			"category": "D"
+		},
+		{ "timestamp": "2026-01-01T10:00:00Z", "value": 50, "category": "E" },
+		{
+			"id": "r6",
+			"timestamp": "2026-01-01T10:00:00Z",
+			"value": 60,
+			"category": ""
+		},
+		{ "id": "r7", "timestamp": null, "value": 70, "category": "F" },
+		{
+			"id": "r8",
+			"timestamp": "2026-01-01T10:00:00Z",
+			"value": null,
+			"category": "G"
+		},
+		{},
+		{
+			"id": "r10",
+			"timestamp": "2026-01-01T10:00:00Z",
+			"value": 100,
+			"category": "H"
+		}
+	]
+}

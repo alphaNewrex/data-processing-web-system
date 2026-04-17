@@ -1,0 +1,41 @@
+{
+	"dataset_id": "ds_007",
+	"records": [
+		{
+			"id": "r1",
+			"timestamp": "2026-01-01T10:00:00Z",
+			"value": 10.5,
+			"category": "A"
+		},
+		{
+			"id": "r2",
+			"timestamp": "2026-01-01T10:01:00Z",
+			"value": -20,
+			"category": "B"
+		},
+		{
+			"id": "r3",
+			"timestamp": "2026-01-01T10:02:00Z",
+			"value": 0,
+			"category": "C"
+		},
+		{
+			"id": "r4",
+			"timestamp": "2026-01-01T10:03:00Z",
+			"value": 0.001,
+			"category": "A"
+		},
+		{
+			"id": "r5",
+			"timestamp": "2026-01-01T10:04:00Z",
+			"value": 999999.99,
+			"category": "B"
+		},
+		{
+			"id": "r6",
+			"timestamp": "2026-01-01T10:05:00Z",
+			"value": -0.5,
+			"category": "C"
+		}
+	]
+}
