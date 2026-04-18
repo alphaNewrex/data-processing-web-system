@@ -37,6 +37,9 @@ RabbitMQ provides proper message acknowledgment semantics. Combined with `acks_l
 **MongoDB for persistence:**
 Dataset entities are stored as documents in MongoDB, which naturally maps to the nested result structure (category_summary, etc.). PyMongo `AsyncMongoClient` is used in FastAPI to avoid blocking the event loop, while `MongoClient` (sync) is used in Celery workers since tasks are synchronous by nature. One library, two clients.
 
+**MinIO (S3-compatible) for payload storage:**
+Only the `dataset_id` (a short string) travels through the Celery broker — the actual record payloads are written to and read from MinIO at every stage boundary. On upload, the raw JSON is stored at `datasets/{id}/raw.json`; each pipeline stage then reads its input and writes its output (`preprocessed.json` → `computed.json` → `result.json`) under the same prefix. This keeps RabbitMQ messages tiny (sidestepping the 128 MB default message limit), makes every stage individually replayable from its input artifact, and leaves Mongo storing only metadata. The same `boto3` code works against MinIO locally and AWS S3 in production with only an endpoint-URL change.
+
 **Dataset entity as source of truth:**
 Instead of relying on Celery's `AsyncResult` for status, each dataset has a dedicated MongoDB document tracking its lifecycle (`QUEUED → PREPROCESSING → COMPUTING → SUMMARISING → COMPLETED/FAILED`). This decouples status tracking from the broker and survives restarts and failures.
 This model brings in consistency and a single source of truth for the REST consumers and can poll to check the status of the task being run.
