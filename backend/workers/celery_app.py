@@ -24,4 +24,6 @@ celery_app.conf.update(
     enable_utc=True,
     # We store results in MongoDB directly, disable Celery result backend
     result_backend=None,
+    # Celery 6 forward-compat: explicitly opt into retrying broker connection at startup
+    broker_connection_retry_on_startup=True,
 )

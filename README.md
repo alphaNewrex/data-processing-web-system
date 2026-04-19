@@ -4,6 +4,8 @@
 
 A web-based system that accepts JSON dataset uploads, processes them asynchronously through a multi-stage pipeline, and displays results in a real-time UI.
 
+**[Watch the demo video](https://drive.google.com/file/d/1iJbxtfFmDhMeNvGZ88MzVoZfejPw-eLt/view?usp=sharing)**
+
 ## Quick Start
 
 ```bash

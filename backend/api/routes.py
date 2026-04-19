@@ -1,4 +1,5 @@
 import json
+import logging
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
 
@@ -8,6 +9,7 @@ from common.models import DatasetEntity, DatasetStatus
 from common.storage import ensure_bucket, put_json, delete_prefix, KEY_RAW
 from workers.workflow import build_processing_workflow
 
+logger = logging.getLogger("api.routes")
 router = APIRouter()
 
 
@@ -35,10 +37,13 @@ async def upload_dataset(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="JSON must contain 'records' array")
 
     dataset_id = data["dataset_id"]
+    record_count = len(data["records"])
+    logger.info("[UPLOAD] dataset=%s file=%s records=%d", dataset_id, file.filename, record_count)
 
     # Check for duplicate dataset_id
     existing = await get_dataset(dataset_id)
     if existing is not None:
+        logger.warning("[UPLOAD][CONFLICT] dataset=%s already exists", dataset_id)
         raise HTTPException(
             status_code=409,
             detail=f"Dataset '{dataset_id}' already exists",
@@ -61,6 +66,7 @@ async def upload_dataset(file: UploadFile = File(...)):
     # Dispatch processing workflow — only the dataset_id travels in the
     # Celery messages; each stage pulls/pushes its payload from storage.
     build_processing_workflow(dataset_id)
+    logger.info("[UPLOAD][DISPATCHED] dataset=%s", dataset_id)
 
     return DatasetUploadResponse(
         dataset_id=dataset_id,
@@ -98,6 +104,7 @@ async def delete_dataset_endpoint(dataset_id: str):
     await delete_dataset(dataset_id)
     # Remove any stage payloads from object storage as well.
     delete_prefix(dataset_id)
+    logger.info("[DELETE] dataset=%s", dataset_id)
     return {"message": f"Dataset '{dataset_id}' deleted"}
 
 
@@ -107,4 +114,5 @@ async def delete_all_datasets_endpoint():
     ids = await delete_all_datasets()
     for dataset_id in ids:
         delete_prefix(dataset_id)
+    logger.info("[DELETE_ALL] count=%d", len(ids))
     return {"message": f"{len(ids)} dataset(s) deleted"}
