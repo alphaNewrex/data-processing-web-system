@@ -207,7 +207,7 @@ class TestTaskPipeline:
         assert out["average_value"] == 18.75
         assert out["record_count"] == 6
         assert out["invalid_count"] == 2
-        mock_sleep.assert_called_once_with(15)
+        mock_sleep.assert_called_once_with(5)
         mock_update.assert_called_once_with("test_ds_001", DatasetStatus.COMPUTING)
 
     @patch("workers.tasks.set_dataset_result")

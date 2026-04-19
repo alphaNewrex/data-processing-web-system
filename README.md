@@ -8,13 +8,15 @@ A web-based system that accepts JSON dataset uploads, processes them asynchronou
 
 ## Quick Start
 
+**Prerequisite:** [Docker](https://docs.docker.com/get-docker/) with the Compose plugin (Docker Desktop on macOS/Windows, or Docker Engine + `docker-compose-plugin` on Linux). Nothing else needs to be installed on the host — Python, Node, MongoDB, RabbitMQ and MinIO all run inside containers.
+
 ```bash
 docker compose up --build -d
 ```
 
 Open **http://localhost:3000** in your browser.
 
-That's it — all 6 services (frontend, API, 2 workers, RabbitMQ, MongoDB) start automatically.
+That's it — all 7 services (frontend, API, 2 workers, RabbitMQ, MongoDB, MinIO) start automatically. Ports used on the host: `3000` (UI), `8000` (API), `9000`/`9001` (MinIO S3 + console), `27018` (MongoDB).
 
 ## Architecture
 
