@@ -269,9 +269,10 @@ class TestAPIEndpoints:
     """Test FastAPI endpoints with mocked Celery and MongoDB."""
 
     @patch("api.routes.build_processing_workflow")
+    @patch("api.routes.set_celery_task_id")
     @patch("api.routes.create_dataset")
     @patch("api.routes.get_dataset")
-    def test_upload_success(self, mock_get, mock_create, mock_workflow, client, sample_dataset, fake_storage):
+    def test_upload_success(self, mock_get, mock_create, mock_set_task_id, mock_workflow, client, sample_dataset, fake_storage):
         mock_get.return_value = None  # no duplicate
         mock_create.return_value = None
 
@@ -289,6 +290,8 @@ class TestAPIEndpoints:
         # Verify workflow dispatched with just the dataset_id
         mock_create.assert_awaited_once()
         mock_workflow.assert_called_once_with("test_ds_001")
+        # celery_task_id captured from the chain's AsyncResult
+        mock_set_task_id.assert_awaited_once_with("test_ds_001", "test-task-id")
 
         # Raw payload should now live in storage under {dataset_id}/raw.json
         uploaded = fake_storage.get_json("test_ds_001", "raw.json")
@@ -334,6 +337,27 @@ class TestAPIEndpoints:
         mock_get.return_value = {"dataset_id": "test_ds_001"}  # already exists
         response = client.post("/api/dataset", files=[_make_file(sample_dataset, "ds_001.json")])
         assert response.status_code == 409
+
+    @patch("api.routes.build_processing_workflow")
+    @patch("api.routes.set_celery_task_id")
+    @patch("api.routes.create_dataset")
+    @patch("api.routes.get_dataset")
+    def test_upload_duplicate_race_via_unique_index(
+        self, mock_get, mock_create, mock_set_task_id, mock_workflow, client, sample_dataset, fake_storage
+    ):
+        """Two concurrent uploads both pass the pre-check; the unique index
+        on dataset_id rejects the loser with DuplicateKeyError → 409."""
+        from pymongo.errors import DuplicateKeyError
+
+        mock_get.return_value = None  # pre-check says "not a duplicate"
+        mock_create.side_effect = DuplicateKeyError("dup key: dataset_id")
+
+        response = client.post("/api/dataset", files=[_make_file(sample_dataset, "ds_001.json")])
+
+        assert response.status_code == 409
+        # Workflow must NOT have been dispatched on the losing race
+        mock_workflow.assert_not_called()
+        mock_set_task_id.assert_not_called()
 
     @patch("api.routes.list_datasets")
     def test_get_datasets(self, mock_list, client):
@@ -450,8 +474,9 @@ class TestEdgeCases:
 class TestDatasetTaskOnFailure:
     """Cover the DatasetTask.on_failure hook that centralises failure handling."""
 
+    @patch("workers.tasks.delete_prefix")
     @patch("workers.tasks.set_dataset_failed")
-    def test_on_failure_marks_failed_from_positional_args(self, mock_set_failed):
+    def test_on_failure_marks_failed_from_positional_args(self, mock_set_failed, mock_delete_prefix):
         from workers.tasks import preprocess
 
         exc = RuntimeError("preprocess blew up")
@@ -459,18 +484,23 @@ class TestDatasetTaskOnFailure:
         preprocess.on_failure(exc, "task-123", ("ds_fail",), {}, None)
 
         mock_set_failed.assert_called_once_with("ds_fail", "preprocess blew up")
+        # S3 prefix purged so failed datasets don't leak storage
+        mock_delete_prefix.assert_called_once_with("ds_fail")
 
+    @patch("workers.tasks.delete_prefix")
     @patch("workers.tasks.set_dataset_failed")
-    def test_on_failure_marks_failed_from_kwargs(self, mock_set_failed):
+    def test_on_failure_marks_failed_from_kwargs(self, mock_set_failed, mock_delete_prefix):
         from workers.tasks import compute
 
         exc = ValueError("compute blew up")
         compute.on_failure(exc, "task-456", (), {"dataset_id": "ds_fail_kw"}, None)
 
         mock_set_failed.assert_called_once_with("ds_fail_kw", "compute blew up")
+        mock_delete_prefix.assert_called_once_with("ds_fail_kw")
 
+    @patch("workers.tasks.delete_prefix")
     @patch("workers.tasks.set_dataset_failed")
-    def test_on_failure_stringifies_exception(self, mock_set_failed):
+    def test_on_failure_stringifies_exception(self, mock_set_failed, mock_delete_prefix):
         from workers.tasks import summarise
 
         summarise.on_failure(
@@ -478,15 +508,28 @@ class TestDatasetTaskOnFailure:
         )
 
         mock_set_failed.assert_called_once_with("ds_fail_2", "plain string error")
+        mock_delete_prefix.assert_called_once_with("ds_fail_2")
 
+    @patch("workers.tasks.delete_prefix")
     @patch("workers.tasks.set_dataset_failed")
-    def test_on_failure_skips_when_no_dataset_id(self, mock_set_failed):
+    def test_on_failure_skips_when_no_dataset_id(self, mock_set_failed, mock_delete_prefix):
         from workers.tasks import preprocess
 
         # No args and no dataset_id kwarg -> should not call set_dataset_failed
         preprocess.on_failure(RuntimeError("oops"), "task-x", (), {}, None)
 
         mock_set_failed.assert_not_called()
+        mock_delete_prefix.assert_not_called()
+
+    @patch("workers.tasks.delete_prefix", side_effect=RuntimeError("s3 down"))
+    @patch("workers.tasks.set_dataset_failed")
+    def test_on_failure_swallows_s3_cleanup_errors(self, mock_set_failed, _mock_delete_prefix):
+        """The dataset must be marked FAILED even when S3 cleanup raises."""
+        from workers.tasks import preprocess
+
+        preprocess.on_failure(RuntimeError("boom"), "task-z", ("ds_x",), {}, None)
+
+        mock_set_failed.assert_called_once_with("ds_x", "boom")
 
 
 # -------------------------------------------------------------------
@@ -658,14 +701,18 @@ class TestDeleteEndpoints:
         response = client.delete("/api/dataset/ds_p")
         assert response.status_code == 409
 
-    @patch("api.routes.delete_all_datasets")
-    def test_delete_all_datasets(self, mock_delete_all, client):
-        mock_delete_all.return_value = ["ds_a", "ds_b", "ds_c"]
+    @patch("api.routes.list_terminal_dataset_ids")
+    @patch("api.routes.delete_datasets_by_ids")
+    def test_delete_all_datasets(self, mock_delete_by_ids, mock_list_ids, client):
+        mock_list_ids.return_value = ["ds_a", "ds_b", "ds_c"]
+        mock_delete_by_ids.return_value = 3
         with patch("api.routes.delete_prefix") as mock_prefix:
             response = client.delete("/api/datasets")
         assert response.status_code == 200
         assert "3" in response.json()["message"]
         assert mock_prefix.call_count == 3
+        # S3 cleanup must happen before Mongo delete
+        mock_delete_by_ids.assert_awaited_once_with(["ds_a", "ds_b", "ds_c"])
 
 
 # -------------------------------------------------------------------

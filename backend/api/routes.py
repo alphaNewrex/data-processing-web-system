@@ -2,10 +2,19 @@ import json
 import logging
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
+from pymongo.errors import DuplicateKeyError
 
-from api.async_store import create_dataset, get_dataset, list_datasets, delete_dataset, delete_all_datasets
+from api.async_store import (
+    create_dataset,
+    get_dataset,
+    list_datasets,
+    delete_dataset,
+    delete_datasets_by_ids,
+    list_terminal_dataset_ids,
+    set_celery_task_id,
+)
 from api.schemas import DatasetUploadResponse, DatasetStatusResponse
-from common.models import DatasetEntity, DatasetStatus
+from common.models import DatasetEntity, DatasetStatus, TERMINAL_STATUSES
 from common.storage import ensure_bucket, put_json, delete_prefix, KEY_RAW
 from workers.workflow import build_processing_workflow
 
@@ -40,7 +49,7 @@ async def upload_dataset(file: UploadFile = File(...)):
     record_count = len(data["records"])
     logger.info("[UPLOAD] dataset=%s file=%s records=%d", dataset_id, file.filename, record_count)
 
-    # Check for duplicate dataset_id
+    # Fast-path duplicate check.
     existing = await get_dataset(dataset_id)
     if existing is not None:
         logger.warning("[UPLOAD][CONFLICT] dataset=%s already exists", dataset_id)
@@ -49,24 +58,32 @@ async def upload_dataset(file: UploadFile = File(...)):
             detail=f"Dataset '{dataset_id}' already exists",
         )
 
-    # Persist Dataset entity to MongoDB.
-    entity = DatasetEntity(
-        dataset_id=dataset_id,
-        filename=file.filename or "unknown.json",
-        celery_task_id="",  # will be set after dispatch
-        status=DatasetStatus.QUEUED,
-    )
-    await create_dataset(entity)
-
-    # Upload raw payload to object storage so workers can pull it by key
-    # rather than receiving the full body through RabbitMQ.
+    # Upload raw payload to object storage.
     ensure_bucket()
     put_json(dataset_id, KEY_RAW, data)
 
+    # Persist Dataset entity.
+    entity = DatasetEntity(
+        dataset_id=dataset_id,
+        filename=file.filename or "unknown.json",
+        celery_task_id="",  # populated below once the chain is dispatched
+        status=DatasetStatus.QUEUED,
+    )
+    try:
+        await create_dataset(entity)
+    except DuplicateKeyError:
+        logger.warning("[UPLOAD][RACE] dataset=%s lost insert race", dataset_id)
+        raise HTTPException(
+            status_code=409,
+            detail=f"Dataset '{dataset_id}' already exists",
+        )
+
     # Dispatch processing workflow — only the dataset_id travels in the
     # Celery messages; each stage pulls/pushes its payload from storage.
-    build_processing_workflow(dataset_id)
-    logger.info("[UPLOAD][DISPATCHED] dataset=%s", dataset_id)
+    result = build_processing_workflow(dataset_id)
+    if result is not None and getattr(result, "id", None):
+        await set_celery_task_id(dataset_id, result.id)
+    logger.info("[UPLOAD][DISPATCHED] dataset=%s task=%s", dataset_id, getattr(result, "id", None))
 
     return DatasetUploadResponse(
         dataset_id=dataset_id,
@@ -96,23 +113,39 @@ async def delete_dataset_endpoint(dataset_id: str):
     doc = await get_dataset(dataset_id)
     if doc is None:
         raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found")
-    if doc["status"] not in (DatasetStatus.COMPLETED.value, DatasetStatus.FAILED.value):
+    if doc["status"] not in TERMINAL_STATUSES:
         raise HTTPException(
             status_code=409,
             detail=f"Cannot delete dataset '{dataset_id}' while it is still processing (status: {doc['status']})",
         )
+    try:
+        delete_prefix(dataset_id)
+    except Exception as e:
+        logger.error("[DELETE][S3_FAIL] dataset=%s error=%s", dataset_id, e)
+        raise HTTPException(status_code=500, detail=f"Failed to delete object store payload: {e}")
     await delete_dataset(dataset_id)
-    # Remove any stage payloads from object storage as well.
-    delete_prefix(dataset_id)
     logger.info("[DELETE] dataset=%s", dataset_id)
     return {"message": f"Dataset '{dataset_id}' deleted"}
 
 
 @router.delete("/datasets")
 async def delete_all_datasets_endpoint():
-    """Delete all datasets that are COMPLETED or FAILED."""
-    ids = await delete_all_datasets()
+    """Delete all datasets that are COMPLETED or FAILED.
+
+    Ordering: identify terminal ids → purge S3 → delete Mongo rows for the
+    ids whose S3 cleanup succeeded.
+    """
+    ids = await list_terminal_dataset_ids()
+    deletable: list[str] = []
+    failures: list[str] = []
     for dataset_id in ids:
-        delete_prefix(dataset_id)
-    logger.info("[DELETE_ALL] count=%d", len(ids))
-    return {"message": f"{len(ids)} dataset(s) deleted"}
+        try:
+            delete_prefix(dataset_id)
+            deletable.append(dataset_id)
+        except Exception as e:
+            failures.append(dataset_id)
+            logger.error("[DELETE_ALL][S3_FAIL] dataset=%s error=%s", dataset_id, e)
+
+    removed = await delete_datasets_by_ids(deletable)
+    logger.info("[DELETE_ALL] removed=%d s3_failures=%d", removed, len(failures))
+    return {"message": f"{removed} dataset(s) deleted"}

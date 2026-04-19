@@ -1,6 +1,9 @@
 import type { DatasetStatus, UploadResponse } from "@/types";
 
-const API_BASE = "http://localhost:8000/api";
+// Relative by default. In Docker, nginx proxies /api → api:8000.
+// In `vite dev`, vite.config.ts adds a /api proxy to http://localhost:8000.
+// Override with VITE_API_BASE at build time if needed.
+const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
 export async function uploadDataset(file: File): Promise<UploadResponse> {
   const formData = new FormData();

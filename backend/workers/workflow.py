@@ -24,8 +24,7 @@ def build_processing_workflow(dataset_id: str):
     stage exhausts its retries, `DatasetTask.on_failure` marks the dataset
     as FAILED in MongoDB. No per-workflow error callback is needed.
 
-    Returns the AsyncResult for the chain. Callers may ignore it (progress is
-    tracked via the Dataset entity in MongoDB, not the Celery result backend).
+    Returns the `AsyncResult` for the chain.
     """
     pipeline = chain(
         preprocess.s(dataset_id),

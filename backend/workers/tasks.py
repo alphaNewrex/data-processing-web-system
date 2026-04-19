@@ -33,6 +33,7 @@ from common.validation import is_valid_record
 from common.storage import (
     get_json,
     put_json,
+    delete_prefix,
     KEY_RAW,
     KEY_PREPROCESSED,
     KEY_COMPUTED,
@@ -68,14 +69,25 @@ class DatasetTask(Task):
     retry_jitter = True
 
     def on_failure(self, exc, task_id, args, kwargs, einfo):  # noqa: D401
-        """Runs once retries are exhausted. Marks the dataset as FAILED."""
+        """Runs once retries are exhausted. Marks the dataset as FAILED
+        and best-effort cleans up its object-store prefix so failed rows
+        don't accumulate orphaned payloads."""
         dataset_id = kwargs.get("dataset_id") or (args[0] if args else None)
-        if dataset_id:
-            logger.error("[PIPELINE][FAILED] dataset=%s error=%s", dataset_id, exc)
-            set_dataset_failed(str(dataset_id), str(exc))
-        else:
+        if not dataset_id:
             # Shouldn't happen given the contract — log so we notice.
             logger.error("[PIPELINE][FAILED] task=%s no dataset_id in args", self.name)
+            return
+
+        logger.error("[PIPELINE][FAILED] dataset=%s error=%s", dataset_id, exc)
+        set_dataset_failed(str(dataset_id), str(exc))
+        try:
+            delete_prefix(str(dataset_id))
+        except Exception as cleanup_err:  # pragma: no cover - defensive
+            # Don't mask the original failure — just log and move on.
+            logger.warning(
+                "[PIPELINE][FAILED][CLEANUP] dataset=%s error=%s",
+                dataset_id, cleanup_err,
+            )
 
 
 def _simulate_work() -> None:
@@ -135,7 +147,7 @@ def compute(dataset_id: str) -> str:
     update_dataset_status(dataset_id, DatasetStatus.COMPUTING)
 
     prev = get_json(dataset_id, KEY_PREPROCESSED)
-    valid_records = prev["valid_records"]
+    valid_records = prev.get("valid_records", [])
     _simulate_work()
 
     # Build category summary
@@ -156,8 +168,8 @@ def compute(dataset_id: str) -> str:
         KEY_COMPUTED,
         {
             "dataset_id": dataset_id,
-            "record_count": prev["record_count"],
-            "invalid_count": prev["invalid_count"],
+            "record_count": prev.get("record_count", 0),
+            "invalid_count": prev.get("invalid_count", 0),
             "category_summary": category_summary,
             "average_value": average_value,
         },
@@ -183,10 +195,10 @@ def summarise(dataset_id: str) -> dict:
 
     result = {
         "dataset_id": dataset_id,
-        "record_count": prev["record_count"],
-        "category_summary": prev["category_summary"],
-        "average_value": prev["average_value"],
-        "invalid_records": prev["invalid_count"],
+        "record_count": prev.get("record_count", 0),
+        "category_summary": prev.get("category_summary", {}),
+        "average_value": prev.get("average_value", 0.0),
+        "invalid_records": prev.get("invalid_count", 0),
     }
 
     put_json(dataset_id, KEY_RESULT, result)

@@ -4,7 +4,7 @@ Sync MongoDB store for Celery workers (PyMongo).
 
 from datetime import datetime, timezone
 
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING, DESCENDING
 
 from .config import settings
 from .models import DatasetEntity, DatasetStatus
@@ -18,6 +18,20 @@ def _get_collection():
     if _client is None:
         _client = MongoClient(settings.MONGO_URL)
     return _client[settings.MONGO_DB][settings.MONGO_COLLECTION]
+
+
+def reset_client() -> None:
+    """Drop the cached client. Used after process fork in Celery workers."""
+    global _client
+    _client = None
+
+
+def ensure_indexes() -> None:
+    """Create the indexes the app relies on. Idempotent."""
+    col = _get_collection()
+    col.create_index([("dataset_id", ASCENDING)], unique=True, name="uniq_dataset_id")
+    col.create_index([("created_at", DESCENDING)], name="created_at_desc")
+    col.create_index([("status", ASCENDING)], name="status")
 
 
 def create_dataset(entity: DatasetEntity) -> None:

@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-from typing import Optional
 
 
 class DatasetUploadResponse(BaseModel):
@@ -11,10 +10,10 @@ class DatasetStatusResponse(BaseModel):
     dataset_id: str
     filename: str
     status: str
-    result: Optional[dict] = None
-    error: Optional[str] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    result: dict | None = None
+    error: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class ErrorResponse(BaseModel):

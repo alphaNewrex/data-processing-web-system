@@ -1,6 +1,5 @@
 from enum import Enum
 from datetime import datetime, timezone
-from typing import Optional
 
 
 class DatasetStatus(str, Enum):
@@ -12,6 +11,29 @@ class DatasetStatus(str, Enum):
     FAILED = "FAILED"
 
 
+# Convenience set so callers don't hard-code string literals.
+TERMINAL_STATUSES: frozenset[str] = frozenset(
+    {DatasetStatus.COMPLETED.value, DatasetStatus.FAILED.value}
+)
+
+
+def _parse_dt(value: object) -> datetime:
+    """Coerce Mongo-stored timestamps back into aware datetimes.
+
+    Accepts ISO-8601 strings (persisted rows), datetime instances (mongomock
+    returns these directly), or None (missing field) and falls back to now(UTC)
+    so the entity is always usable.
+    """
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+    return datetime.now(timezone.utc)
+
+
 class DatasetEntity:
     """Dataset document stored in MongoDB."""
 
@@ -21,10 +43,10 @@ class DatasetEntity:
         filename: str,
         celery_task_id: str,
         status: DatasetStatus = DatasetStatus.QUEUED,
-        result: Optional[dict] = None,
-        error: Optional[str] = None,
-        created_at: Optional[datetime] = None,
-        updated_at: Optional[datetime] = None,
+        result: dict | None = None,
+        error: str | None = None,
+        created_at: datetime | None = None,
+        updated_at: datetime | None = None,
     ):
         self.dataset_id = dataset_id
         self.filename = filename
@@ -52,10 +74,10 @@ class DatasetEntity:
         return cls(
             dataset_id=data["dataset_id"],
             filename=data["filename"],
-            celery_task_id=data["celery_task_id"],
+            celery_task_id=data.get("celery_task_id", ""),
             status=DatasetStatus(data["status"]),
             result=data.get("result"),
             error=data.get("error"),
-            created_at=datetime.fromisoformat(data["created_at"]) if isinstance(data.get("created_at"), str) else data.get("created_at"),
-            updated_at=datetime.fromisoformat(data["updated_at"]) if isinstance(data.get("updated_at"), str) else data.get("updated_at"),
+            created_at=_parse_dt(data.get("created_at")),
+            updated_at=_parse_dt(data.get("updated_at")),
         )

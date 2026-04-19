@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.signals import worker_process_init
 
 from common.config import settings
 
@@ -31,3 +32,21 @@ celery_app.conf.update(
     task_soft_time_limit=60,
     task_time_limit=120,
 )
+
+
+@worker_process_init.connect
+def _reset_clients_after_fork(**_kwargs) -> None:
+    """Drop cached PyMongo / boto3 clients inherited from the master process.
+
+    Celery's prefork pool forks the master after module import, so any
+    connection pool or SSL context created pre-fork would be shared across
+    children — PyMongo explicitly warns against this and it manifests as
+    hangs or corrupted responses under load. Clearing the module-level
+    caches forces each child to lazy-init its own clients.
+    """
+    # Local imports to keep module import order loose.
+    from common import store as store_mod
+    from common import storage as storage_mod
+
+    store_mod.reset_client()
+    storage_mod._client = None
