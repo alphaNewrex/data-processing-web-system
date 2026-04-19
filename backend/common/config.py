@@ -14,5 +14,9 @@ class Settings:
     S3_SECRET_KEY: str = os.getenv("S3_SECRET_KEY", "minioadmin")
     S3_REGION: str = os.getenv("S3_REGION", "us-east-1")
 
+    # Pipeline behaviour
+    # Artificial per-stage delay to make progress visible in demos. Default 0 in prod/tests.
+    SIMULATE_DELAY_SECONDS: int = int(os.getenv("SIMULATE_DELAY_SECONDS", "0"))
+
 
 settings = Settings()

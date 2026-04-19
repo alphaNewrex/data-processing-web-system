@@ -26,4 +26,8 @@ celery_app.conf.update(
     result_backend=None,
     # Celery 6 forward-compat: explicitly opt into retrying broker connection at startup
     broker_connection_retry_on_startup=True,
+    # Time limits per task (seconds). soft_time_limit raises SoftTimeLimitExceeded
+    # which the task can catch for graceful cleanup; time_limit hard-kills the worker.
+    task_soft_time_limit=60,
+    task_time_limit=120,
 )

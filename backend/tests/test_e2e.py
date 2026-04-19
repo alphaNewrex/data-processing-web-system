@@ -106,57 +106,62 @@ def _make_file(data: dict, filename: str = "test.json"):
 # -------------------------------------------------------------------
 
 class TestValidateRecord:
-    """Test the record validation logic directly."""
+    """Test the record validation logic directly (pure function)."""
 
     def test_valid_record(self):
-        from workers.tasks import _validate_record
+        from common.validation import is_valid_record
         record = {"id": "r1", "timestamp": "2026-01-01T10:00:00Z", "value": 10, "category": "A"}
-        assert _validate_record(record) is True
+        assert is_valid_record(record) is True
 
     def test_missing_id(self):
-        from workers.tasks import _validate_record
+        from common.validation import is_valid_record
         record = {"timestamp": "2026-01-01T10:00:00Z", "value": 10, "category": "A"}
-        assert _validate_record(record) is False
+        assert is_valid_record(record) is False
 
     def test_missing_timestamp(self):
-        from workers.tasks import _validate_record
+        from common.validation import is_valid_record
         record = {"id": "r1", "value": 10, "category": "A"}
-        assert _validate_record(record) is False
+        assert is_valid_record(record) is False
 
     def test_missing_value(self):
-        from workers.tasks import _validate_record
+        from common.validation import is_valid_record
         record = {"id": "r1", "timestamp": "2026-01-01T10:00:00Z", "category": "A"}
-        assert _validate_record(record) is False
+        assert is_valid_record(record) is False
 
     def test_missing_category(self):
-        from workers.tasks import _validate_record
+        from common.validation import is_valid_record
         record = {"id": "r1", "timestamp": "2026-01-01T10:00:00Z", "value": 10}
-        assert _validate_record(record) is False
+        assert is_valid_record(record) is False
 
     def test_invalid_timestamp(self):
-        from workers.tasks import _validate_record
+        from common.validation import is_valid_record
         record = {"id": "r1", "timestamp": "not-a-date", "value": 10, "category": "A"}
-        assert _validate_record(record) is False
+        assert is_valid_record(record) is False
 
     def test_non_numeric_value(self):
-        from workers.tasks import _validate_record
+        from common.validation import is_valid_record
         record = {"id": "r1", "timestamp": "2026-01-01T10:00:00Z", "value": "abc", "category": "A"}
-        assert _validate_record(record) is False
+        assert is_valid_record(record) is False
 
     def test_empty_category(self):
-        from workers.tasks import _validate_record
+        from common.validation import is_valid_record
         record = {"id": "r1", "timestamp": "2026-01-01T10:00:00Z", "value": 10, "category": ""}
-        assert _validate_record(record) is False
+        assert is_valid_record(record) is False
 
     def test_null_fields(self):
-        from workers.tasks import _validate_record
+        from common.validation import is_valid_record
         record = {"id": "r1", "timestamp": None, "value": 10, "category": "A"}
-        assert _validate_record(record) is False
+        assert is_valid_record(record) is False
 
     def test_not_a_dict(self):
-        from workers.tasks import _validate_record
-        assert _validate_record("not a dict") is False
-        assert _validate_record(None) is False
+        from common.validation import is_valid_record
+        assert is_valid_record("not a dict") is False
+        assert is_valid_record(None) is False
+
+    def test_bool_is_not_numeric(self):
+        from common.validation import is_valid_record
+        record = {"id": "r1", "timestamp": "2026-01-01T10:00:00Z", "value": True, "category": "A"}
+        assert is_valid_record(record) is False
 
 
 # -------------------------------------------------------------------
@@ -207,7 +212,6 @@ class TestTaskPipeline:
         assert out["average_value"] == 18.75
         assert out["record_count"] == 6
         assert out["invalid_count"] == 2
-        mock_sleep.assert_called_once_with(5)
         mock_update.assert_called_once_with("test_ds_001", DatasetStatus.COMPUTING)
 
     @patch("workers.tasks.set_dataset_result")
@@ -443,37 +447,46 @@ class TestEdgeCases:
 # Celery error-handler test
 # -------------------------------------------------------------------
 
-class TestPipelineErrorHandler:
-    """Cover the on_pipeline_error failure callback."""
+class TestDatasetTaskOnFailure:
+    """Cover the DatasetTask.on_failure hook that centralises failure handling."""
 
     @patch("workers.tasks.set_dataset_failed")
-    def test_on_pipeline_error_marks_failed(self, mock_set_failed):
-        from workers.tasks import on_pipeline_error
+    def test_on_failure_marks_failed_from_positional_args(self, mock_set_failed):
+        from workers.tasks import preprocess
 
-        # Celery error callbacks are invoked with (request, exc, traceback)
-        # as positional arguments (self is bound by `bind=True`).
         exc = RuntimeError("preprocess blew up")
-        on_pipeline_error(
-            request=MagicMock(id="task-123"),
-            exc=exc,
-            traceback="Traceback ...",
-            dataset_id="ds_fail",
-        )
+        # Celery invokes on_failure(self, exc, task_id, args, kwargs, einfo)
+        preprocess.on_failure(exc, "task-123", ("ds_fail",), {}, None)
 
         mock_set_failed.assert_called_once_with("ds_fail", "preprocess blew up")
 
     @patch("workers.tasks.set_dataset_failed")
-    def test_on_pipeline_error_stringifies_non_exception(self, mock_set_failed):
-        from workers.tasks import on_pipeline_error
+    def test_on_failure_marks_failed_from_kwargs(self, mock_set_failed):
+        from workers.tasks import compute
 
-        on_pipeline_error(
-            request=MagicMock(),
-            exc="plain string error",
-            traceback="",
-            dataset_id="ds_fail_2",
+        exc = ValueError("compute blew up")
+        compute.on_failure(exc, "task-456", (), {"dataset_id": "ds_fail_kw"}, None)
+
+        mock_set_failed.assert_called_once_with("ds_fail_kw", "compute blew up")
+
+    @patch("workers.tasks.set_dataset_failed")
+    def test_on_failure_stringifies_exception(self, mock_set_failed):
+        from workers.tasks import summarise
+
+        summarise.on_failure(
+            RuntimeError("plain string error"), "task-789", ("ds_fail_2",), {}, None
         )
 
         mock_set_failed.assert_called_once_with("ds_fail_2", "plain string error")
+
+    @patch("workers.tasks.set_dataset_failed")
+    def test_on_failure_skips_when_no_dataset_id(self, mock_set_failed):
+        from workers.tasks import preprocess
+
+        # No args and no dataset_id kwarg -> should not call set_dataset_failed
+        preprocess.on_failure(RuntimeError("oops"), "task-x", (), {}, None)
+
+        mock_set_failed.assert_not_called()
 
 
 # -------------------------------------------------------------------

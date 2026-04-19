@@ -73,6 +73,7 @@ services:
       S3_BUCKET: datasets
       S3_ACCESS_KEY: minioadmin
       S3_SECRET_KEY: minioadmin
+      SIMULATE_DELAY_SECONDS: "5"
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -93,6 +94,7 @@ services:
       S3_BUCKET: datasets
       S3_ACCESS_KEY: minioadmin
       S3_SECRET_KEY: minioadmin
+      SIMULATE_DELAY_SECONDS: "5"
     depends_on:
       rabbitmq:
         condition: service_healthy
